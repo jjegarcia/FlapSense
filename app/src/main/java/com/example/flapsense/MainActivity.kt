@@ -1,46 +1,74 @@
 package com.example.flapsense
 
+import android.Manifest.permission
+import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothManager
+import android.content.Context
+import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.tooling.preview.Preview
-import com.example.flapsense.ui.theme.FlapSenseTheme
+import androidx.core.app.ActivityCompat
+import com.example.flapsense.compose.MainScreen
 
 class MainActivity : ComponentActivity() {
+    private lateinit var bluetoothComponent: BluetoothComponent
+    private val bluetoothAdapter: BluetoothAdapter by lazy {
+        val bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+        bluetoothManager.adapter
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent {
-            FlapSenseTheme {
-                // A surface container using the 'background' color from the theme
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
-                ) {
-                    Greeting("Android")
-                }
-            }
+        ActivityCompat.requestPermissions(
+            this,
+            arrayOf(
+                permission.ACCESS_COARSE_LOCATION,
+                permission.ACCESS_FINE_LOCATION
+            ),
+            PackageManager.PERMISSION_GRANTED
+        )
+        showScreen()
+        initialiseComponents()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        with(bluetoothComponent.scanComponent) {
+            this?.checkEnabled()
         }
     }
-}
 
-@Composable
-fun Greeting(name: String, modifier: Modifier = Modifier) {
-    Text(
-        text = "Hello $name!",
-        modifier = modifier
-    )
-}
+    private fun initialiseComponents() {
+        bluetoothComponent = BluetoothComponent()
+        val bluetoothComponentFactory =
+            BluetoothComponentFactory(
+                bluetoothComponent = bluetoothComponent,
+                context = this@MainActivity,
+                bluetoothAdapter = bluetoothAdapter
+            )
+        bluetoothComponent.viewModel = MainViewModel(bluetoothComponent)
+        bluetoothComponent.stateMachine = StateMachine()
+        bluetoothComponent.locationHandler = bluetoothComponentFactory.locationHandler
+        bluetoothComponent.notificationHelper = bluetoothComponentFactory.notificationHelper
+        bluetoothComponent.clientHandler = bluetoothComponentFactory.clientHandler
+        bluetoothComponent.scanComponent = bluetoothComponentFactory.scanComponent
+        bluetoothComponent.gattComponent = bluetoothComponentFactory.gattComponent
+        bluetoothComponent.databaseHandler = bluetoothComponentFactory.databaseHandler
+        bluetoothComponent.myFirebaseMessagingService =
+            bluetoothComponentFactory.myFirebaseMessagingService
+        bluetoothComponent.myFirebaseMessagingService?.setMessage()
+        with(bluetoothComponent) {
+            scanComponent?.initialise()
+            clientHandler?.initialise(this@MainActivity)
+            notificationHelper?.initialise(this@MainActivity)
+        }
+        bluetoothComponent.serviceFactory = bluetoothComponentFactory.serviceFactory
+    }
 
-@Preview(showBackground = true)
-@Composable
-fun GreetingPreview() {
-    FlapSenseTheme {
-        Greeting("Android")
+    private fun showScreen() {
+        setContent {
+            bluetoothComponent.viewModel?.let { MainScreen(viewModel = it) }
+        }
     }
 }
